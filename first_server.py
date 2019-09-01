@@ -5,10 +5,12 @@ import sql
 import classes
 import geopy.distance
 import threading
+import netifaces
+
 
 # the server connection data.
-HOST = "0.0.0.0"
-print  socket.gethostbyname(socket.gethostname())
+print(netifaces.ifaddresses('wlp2s0')[netifaces.AF_INET][0]['addr'])
+HOST = netifaces.ifaddresses('wlp2s0')[netifaces.AF_INET][0]['addr']
 PORT = 8820
 
 # list of the users. every user will be call: my_user[user_id].
@@ -23,7 +25,7 @@ def find_friends(user_id):
     selected = sql.select("friends", "friend_id", "friend_id IS NOT NULL AND id ", user_id)
 
     if selected:
-        for i in xrange(0, len(selected), ):
+        for i in range(0, len(selected), ):
             # removing the "[""]" from the list.
             selected[i] = str(selected[i])[2:-2:]
 
@@ -113,12 +115,12 @@ def update_contacts(user_id, user_contacts_sorted, phone):
     # run on all the contacts.
     for contact in user_contacts_sorted[:-1]:
 
-        # in "contact" have: "name.phone.id".
+        # in "contact" got: "name.phone.id".
         contact_id = contact.split(".")[2]
         contact_phone = contact.split(".")[1]
         contact_name = contact.split(".")[0]
 
-        # if the nubmer starting with "+972".
+        # if the number starting with "+972".
         if contact_phone[0] == "+":
             # change the "+972" to "0".
             contact_phone = "0" + contact_phone[4::]
@@ -155,21 +157,12 @@ def update_contacts(user_id, user_contacts_sorted, phone):
 
 # create new user.
 def create_user(user_id, client_socket):
-    # get the age and the gender from client.
+    # get the age, the gender and the contacts from client.
     user_data = get(client_socket)
-
-    # the "user_data" have a lot of contacts, so after all the contacts come "||".
-    # while don't have the "||" in the string, there are more contacts.
-    while "||" not in user_data:
-        # add the new contacts to the old.
-        user_data += get(client_socket)
-
-    # removing the control chars "||"
-    user_data = user_data.replace("||", "")
 
     # split the data from the user.
     user_data_list = user_data.split(",")
-    print user_data_list
+    print(user_data_list)
     name = user_data_list[0]
     gender = user_data_list[1]
     phone = user_data_list[2]
@@ -185,6 +178,7 @@ def create_user(user_id, client_socket):
     # updating the contacts to the database.
     update_contacts(user_id, user_contacts_sorted, phone)
 
+    print("sending 1")
     # reporting to the client that got all the data.
     send("1", client_socket)
 
@@ -262,12 +256,26 @@ def connect_to_client(server_socket):
 
 # send str to the user.
 def send(message, client_socket):
-    client_socket.send(message)
+    client_socket.send(message.encode())
 
 
 # get str from the user.
 def get(client_socket):
-    return client_socket.recv(1024)
+    print("getting")
+    data = b""
+
+    new = client_socket.recv(1024)
+    data += new
+
+    while len(new) == 1024:
+        new = client_socket.recv(1024)
+        data += new
+
+        print("data:" + str(data))
+        print("new" + str(new))
+        print("len:" + str(len(new)))
+
+    return str(data.decode())
 
 
 # create new "user" object by the id and the data from the database.
@@ -278,7 +286,7 @@ def restore_user(user_id, user_type):
 
     elif user_type == "S":
         my_users[user_id] = classes.SuperUser(user_id, None, None, None, None, None, None, None,
-                                              None, None, None, True)
+                                              None, True, None, None)
 
 
 # starting the connecting with user, and send him to new thread.
@@ -293,14 +301,18 @@ def start_user_thread(client_socket):
         # get the id from the android device.
         user_id = get(client_socket)
 
+        print(user_id)
+
         # saving the state of the user.
         user_state = if_exist_id(user_id)
+
+        print(user_state)
 
         # N = correct ID, but not in any table.
         if user_state == "N":
 
             # send to user- you are'nt in "Users" table.
-            client_socket.send("0")  # not founded id
+            send("0", client_socket)  # not founded id
 
             # starts new user.
             create_user(user_id, client_socket)
@@ -330,10 +342,13 @@ def start_user_thread(client_socket):
 
         else:
             send("error", client_socket)
-    # send to the user his last location. less time then starting gps.
-    x, y = my_users[user_id].get_location()
-    print str("F," + str(x) + "," + str(y) + "," + my_users[user_id].get_radius())
-    send(str("F," + str(x) + "," + str(y) + "," + my_users[user_id].get_radius()), client_socket)
+
+    if user_state != "N":
+        # send to the user his last location. shorter time then starting gps.
+        x, y = my_users[user_id].get_location()
+
+        print(str("F," + str(x) + "," + str(y) + "," + my_users[user_id].get_radius()))
+        send(str("F," + str(x) + "," + str(y) + "," + my_users[user_id].get_radius()), client_socket)
 
     # create new thread that will do the updates with the server.
     threading.Thread(target=updates, args=(client_socket, user_id)).start()
@@ -356,13 +371,14 @@ def list_of_friends_data(friends_around):
 
 # thread for the updates.
 def updates(client_socket, user_id):
+
     # update all the time.
     while client_socket:
 
         # get the location from the user.
         loc = get(client_socket)
 
-        print "data update:" + loc
+        print("data update:" + loc)
         # set the radius to the correct one.
         my_users[user_id].set_radius(loc.split(";")[1])
 
@@ -405,11 +421,11 @@ def main():
 
 
 try:
-    # check if the file running by himself' and if he is, run the main()
+    # check if the file running by himself and if he is, run the main()
     if __name__ == '__main__':
         main()
 
 except Exception as e:
-    print e
-    raw_input("Enter to exit\n")
+    print(e)
+    input("Enter to exit\n")
     exit()
