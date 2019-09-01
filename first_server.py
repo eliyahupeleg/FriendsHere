@@ -5,12 +5,9 @@ import sql
 import classes
 import geopy.distance
 import threading
-import netifaces
-
 
 # the server connection data.
-print(netifaces.ifaddresses('wlp2s0')[netifaces.AF_INET][0]['addr'])
-HOST = netifaces.ifaddresses('wlp2s0')[netifaces.AF_INET][0]['addr']
+HOST = "0.0.0.0"
 PORT = 8820
 
 # list of the users. every user will be call: my_user[user_id].
