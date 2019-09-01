@@ -8,7 +8,7 @@ import threading
 
 # the server connection data.
 HOST = "0.0.0.0"
-print("socket.gethostbyname(socket.gethostname())"
+print(socket.gethostbyname(socket.gethostname()))
 PORT = 8820
 
 # list of the users. every user will be call: my_user[user_id].
